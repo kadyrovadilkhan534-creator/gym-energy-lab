@@ -1,2 +1,77 @@
-# gym-energy-lab
-Interactive gym energy recovery simulator: physics, energy savings, retrofit costs, and cycling comparison.
+# Gym Energy Lab
+
+A local Streamlit feasibility simulator for recovering energy from a descending
+gym weight stack, with a continuous-cycling comparison. All defaults are
+illustrative assumptions, not equipment measurements or quotes.
+
+## Run locally
+
+Python 3.11 or newer is recommended.
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python -m streamlit run app.py
+```
+
+On Windows, activate with `.venv\Scripts\activate` instead.
+Open the Local URL printed by Streamlit, normally http://localhost:8501.
+
+## Features
+
+- Editable exercise, recovery, utilization, auxiliary-power and cost assumptions.
+- Energy balance, usage sensitivity, device-runtime equivalence and cash-flow charts.
+- Negative net energy and uneconomic cases remain visible.
+- Exercise-bike comparison with explicit shared cost and operating assumptions.
+- JSON/CSV downloads containing inputs and results; no external account required.
+- Separate pure-Python physics model for review by the science team.
+
+## Model boundary
+
+For one set, `E_Wh = mass * 9.81 * vertical_travel * reps * capture * efficiency / 3600`.
+Only descending gravitational energy is harvested. Mechanical capture and
+conversion efficiency are separate. Generator braking changes lowering effort.
+Travel is the weight stack's vertical movement, not necessarily handle travel.
+
+Scale by sets/day, operating days, availability and machine count. Apply the
+local-use fraction and subtract active/standby auxiliary consumption once.
+Efficiency includes any transmission, conversion, storage and inverter losses.
+Active electronics power replaces standby power during exercise; powered hours
+cover gym opening hours or all 8,760 hours/year. Negative net output is permitted.
+
+Electricity value is net kWh times a user-entered flat tariff. Annual savings
+subtract maintenance and an annual replacement allowance. Simple payback assumes
+constant annual savings; NPV discounts savings over equipment lifetime. Major
+replacement schedules, grants, export income and resale value are not modelled.
+Currency selection only relabels values; it never converts prices.
+
+Cycling uses mechanical pedal power times duration times its own efficiency.
+The stack capture fraction does not apply to cycling. The two fleets share the
+same costs, schedule and auxiliary settings for a controlled comparison, not as
+a claim that their actual retrofit prices or hardware are identical.
+
+No cut-in speed, generator torque limits, detailed biomechanics, battery state,
+carbon footprint or food-energy impacts are resolved. No AI or telemetry service
+is needed. Treat outputs as a concept study until validated experimentally.
+
+## Validate
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+Physics tests use only the Python standard library. UI tests additionally use
+Streamlit's built-in AppTest and the packages in `requirements.txt`.
+
+## Share later
+
+Upload `app.py`, `model.py`, `requirements.txt`, `.streamlit/config.toml`, README
+and tests to a GitHub repository. Do not upload `.venv` or secrets. Connect the
+repository to Streamlit Community Cloud, choose `app.py` as the entrypoint and
+deploy. A public repository exposes the source; the deployment provides the
+interactive app. GitHub Pages does not run a conventional Streamlit server.
+
+- https://docs.streamlit.io/deploy/streamlit-community-cloud
+- https://support.maxongroup.com/hc/en-us/articles/360004496254-maxon-Motors-as-Generators
+- https://www.gosportsart.com/eco-powr/
