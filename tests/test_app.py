@@ -35,9 +35,9 @@ class InterfaceTests(unittest.TestCase):
     def test_bike_and_currency_controls(self):
         app = self.app()
         app.number_input(key="bike_power").set_value(200).run()
-        app.selectbox(key="currency").set_value("KGS").run()
+        app.selectbox(key="currency").set_value("INR").run()
         self.assertFalse(app.exception)
-        self.assertIn("KGS", app.metric[2].value)
+        self.assertIn("INR", app.metric[2].value)
         app.number_input(key="bike_sessions").set_value(100).run()
         self.assertFalse(app.exception)
         self.assertTrue(app.warning)

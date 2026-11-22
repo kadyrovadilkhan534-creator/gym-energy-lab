@@ -212,6 +212,14 @@ with overview:
             totals=dict(marker=dict(color="#087f70")),
             hovertemplate="%{x}: %{y:.3f} kWh<extra></extra>"))
         st.plotly_chart(style_chart(fig, ytitle="kWh / year · entire fleet"), width="stretch")
+        per_set = go.Figure(go.Waterfall(
+            x=["Available", "Not captured", "Conversion heat", "Electricity"],
+            measure=["absolute", "relative", "relative", "total"],
+            y=[result.source_wh_per_session, -result.mechanical_loss_wh_per_session,
+               -result.generator_heat_loss_wh_per_session, 0],
+            totals=dict(marker=dict(color="#087f70")),
+            hovertemplate="%{x}: %{y:.4f} Wh<extra></extra>"))
+        st.plotly_chart(style_chart(per_set, height=270, ytitle="Wh / set · one machine"), width="stretch")
         st.caption(f"Per set: {result.source_wh_per_session:.3f} Wh available → {result.mechanical_loss_wh_per_session:.3f} Wh not captured → {result.generator_heat_loss_wh_per_session:.3f} Wh lost as generator/conversion heat → {result.gross_wh_per_session:.3f} Wh electricity.")
     with right:
         st.markdown("#### Put it in perspective")
