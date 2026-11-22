@@ -4,6 +4,7 @@ import csv
 from dataclasses import asdict, replace
 from io import StringIO
 import json
+from pathlib import Path
 
 import plotly.graph_objects as go
 import streamlit as st
@@ -84,7 +85,7 @@ with st.sidebar:
         st.number_input("Standby consumption per machine (W)", 0.0, 100.0, key="standby", step=0.01, format="%.2f")
         st.checkbox("Powered 24/7, including closed days", key="always_on")
         st.caption("Otherwise powered only during gym opening hours. Active power replaces standby power while exercising.")
-    with st.expander("Costs & lifetime"):
+    with st.expander("Costs & lifetime", expanded=True):
         st.selectbox("Currency label", ["USD", "KGS", "EUR", "GBP", "INR"], key="currency",
                      help="Labels only; no exchange-rate conversion. Enter every price in the selected currency.")
         st.number_input(f"Electricity price ({st.session_state.currency}/kWh)", 0.0, 1000.0, key="tariff", step=0.01, format="%.3f")
@@ -111,7 +112,7 @@ st.markdown("""<div class="hero"><div class="eyebrow">HUMAN POWER · MEASURABLE 
 <h1>What could your workout power?</h1>
 <p>Explore the energy hidden in a descending weight stack. Test the physics,
 scale it to a gym, and find out whether the retrofit pays for itself.</p></div>""", unsafe_allow_html=True)
-st.caption("VERSION 02 · LOWERING-ONLY RECOVERY · SIMULATED RESULTS")
+st.caption("VERSION 2.1 · LOWERING-ONLY RECOVERY · SIMULATED RESULTS")
 
 try:
     result = weight_stack(p)
@@ -160,6 +161,7 @@ elif result.payback_years > p.lifetime_years:
 else:
     st.success("Under these assumptions, electricity savings recover the installed cost within the selected lifetime. Check the discounted result in Costs & payback.")
 
+st.info("Explore the updates below: scenario tabs explain uncertain inputs; Energy overview shows annual and per-set losses; Costs & payback shows break-even price and time value of money; Physics & assumptions starts with the animation. Rest time and currency (including INR) are in the sidebar.")
 st.markdown("### Scenario range")
 scenario_tabs = st.tabs(["Conservative", "Expected", "Optimistic"])
 scenario_specs = [
@@ -212,6 +214,7 @@ with overview:
             totals=dict(marker=dict(color="#087f70")),
             hovertemplate="%{x}: %{y:.3f} kWh<extra></extra>"))
         st.plotly_chart(style_chart(fig, ytitle="kWh / year · entire fleet"), width="stretch")
+        st.markdown("#### Energy breakdown per set (Wh)")
         per_set = go.Figure(go.Waterfall(
             x=["Available", "Not captured", "Conversion heat", "Electricity"],
             measure=["absolute", "relative", "relative", "total"],
@@ -251,6 +254,12 @@ with economics:
     c1.metric("Total installed cost", money(result.installed_cost))
     c2.metric("Lifetime cash balance", money(result.lifetime_balance))
     c3.metric("Net present value", money(result.net_present_value), help="Annual net savings discounted at the selected rate, minus installed cost.")
+    if result.break_even_tariff is None:
+        st.metric("Break-even electricity price", "Not achievable", help="Annual generation does not exceed auxiliary electricity use.")
+    else:
+        st.metric("Break-even electricity price", f"{s.currency} {result.break_even_tariff:.3f} / kWh", help="First-year tariff needed for NPV = 0 over the selected lifetime, including installation, upkeep, inflation and discounting.")
+    st.markdown("#### Money over time")
+    st.write(f"Prices and upkeep grow by {p.inflation_rate:.1%} per year. Future savings are discounted at {p.discount_rate:.1%} to express their value today. At this discount rate, {money(100)} received in {p.lifetime_years} years is worth {money(100 / (1 + p.discount_rate) ** p.lifetime_years)} today.")
     rows = cumulative_balance(p, result)
     fig = go.Figure(go.Scatter(x=[r["Year"] for r in rows], y=[r["Cash balance"] for r in rows],
                              mode="lines+markers", line=dict(color="#087f70", width=3),
@@ -258,10 +267,6 @@ with economics:
     fig.add_hline(y=0, line_dash="dot", line_color="#9caeba")
     fig.update_layout(xaxis_title="Years since installation", xaxis=dict(dtick=max(1, p.lifetime_years // 10)))
     st.plotly_chart(style_chart(fig, ytitle=f"Cumulative cash balance ({s.currency})"), width="stretch")
-    if result.break_even_tariff is None:
-        st.metric("Break-even electricity price", "Not achievable", help="Annual generation does not exceed auxiliary electricity use.")
-    else:
-        st.metric("Break-even electricity price", f"{s.currency} {result.break_even_tariff:.3f} / kWh", help="First-year tariff needed for NPV = 0 over the selected lifetime, including installation, upkeep, inflation and discounting.")
     a, b = st.columns(2, gap="large")
     with a:
         st.markdown("#### Annual balance")
@@ -310,6 +315,15 @@ with comparison:
         st.warning(f"Cycling scenario: {exc}")
 
 with science:
+    st.markdown("### Energy recovery animation")
+    st.caption("Press play to see the stack descend, pulley turn and generator produce electricity, with the energy-loss breakdown. This video uses model defaults; the charts use your current sidebar values.")
+    video_path = Path(__file__).resolve().parent / "media" / "stack_energy.mp4"
+    if video_path.is_file():
+        st.video(video_path.read_bytes())
+    else:
+        st.video("https://raw.githubusercontent.com/kadyrovadilkhan534-creator/gym-energy-lab/team-feedback/media/stack_energy.mp4")
+    st.markdown("[Open the animation separately](https://github.com/kadyrovadilkhan534-creator/gym-energy-lab/blob/team-feedback/media/stack_energy.mp4)")
+
     st.markdown("### A transparent first model")
     st.write("The stack starts and ends each descent at rest. We recover only a selected fraction of its released gravitational potential energy.")
     st.latex(r"E_{\mathrm{set,Wh}}=\frac{mgh\,n\,\alpha\,\eta}{3600}")
@@ -341,14 +355,6 @@ with science:
 
 **Commercial context:** [SportsArt ECO-POWR](https://www.gosportsart.com/eco-powr/) demonstrates generating cardio equipment. Manufacturer figures are not used as measured performance for this retrofit.
 """)
-    video_path = "media/stack_energy.mp4"
-    try:
-        with open(video_path, "rb") as video_file:
-            st.markdown("#### Energy recovery animation")
-            st.video(video_file.read())
-            st.caption("Animation uses the default inputs and per-set energy balance from model.py.")
-    except FileNotFoundError:
-        st.info("The physics animation will appear here when `media/stack_energy.mp4` is added. A Manim scene generator is included in the repository.")
     st.info("Every editable starting value is an illustrative assumption. No field currently represents a verified measurement from your gym.")
 
 st.divider()
