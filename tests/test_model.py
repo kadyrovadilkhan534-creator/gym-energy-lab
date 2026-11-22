@@ -39,14 +39,14 @@ class PhysicsTests(unittest.TestCase):
         self.assertEqual(r.gross_kwh_year, 0)
         self.assertAlmostEqual(r.auxiliary_kwh_year, 3.6)
 
-    def test_no_usable_output(self):
-        r = weight_stack(replace(Inputs(), usable_fraction=0))
-        self.assertAlmostEqual(r.net_kwh_year, -r.auxiliary_kwh_year)
+    def test_generated_output_is_used_before_auxiliary_consumption(self):
+        r = weight_stack(Inputs())
+        self.assertAlmostEqual(r.net_kwh_year, r.gross_kwh_year - r.auxiliary_kwh_year)
 
     def test_costs_and_discounting(self):
         p = replace(Inputs(), retrofit_per_machine=1, shared_cost=2,
                     maintenance_per_machine=0, active_aux_w=0, standby_w=0,
-                    machines=2, lifetime_years=10, discount_rate=0)
+                    machines=2, lifetime_years=10, discount_rate=0, inflation_rate=0)
         r = weight_stack(p)
         self.assertEqual(r.installed_cost, 4)
         self.assertAlmostEqual(r.payback_years, 4 / (0.35316 * 2))

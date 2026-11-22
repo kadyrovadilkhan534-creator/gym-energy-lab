@@ -32,11 +32,11 @@ h1,h2,h3 {letter-spacing:-.035em;}
 
 DEFAULTS = {
     "mass": 30, "travel": 0.4, "reps": 12, "sets": 50, "lift": 2.0,
-    "lower": 2.0, "pause": 1.0, "capture": 50, "efficiency": 60,
-    "usable": 100, "machines": 1, "days": 300, "availability": 100,
+    "lower": 2.0, "pause": 1.0, "rest": 60.0, "capture": 50, "efficiency": 60,
+    "machines": 1, "days": 300, "availability": 100,
     "opening": 12.0, "active_aux": 0.2, "standby": 0.01,
     "always_on": False, "currency": "USD", "tariff": 0.2, "retrofit": 250.0,
-    "shared": 0.0, "maintenance": 10.0, "life": 10, "discount": 5.0,
+    "shared": 0.0, "maintenance": 10.0, "life": 10, "discount": 5.0, "inflation": 2.0,
     "bike_power": 100, "bike_minutes": 30, "bike_sessions": 4,
     "bike_efficiency": 60, "device_w": 5.0,
 }
@@ -65,14 +65,14 @@ with st.sidebar:
         a.number_input("Lift (s/rep)", 0.1, 20.0, key="lift", step=0.1)
         b.number_input("Lower (s/rep)", 0.1, 20.0, key="lower", step=0.1)
         st.number_input("Pause (s/rep)", 0.0, 60.0, key="pause", step=0.5,
-                        help="Pause within a repetition. Between-set rest is not modelled; leave time for it in the daily schedule.")
+                        help="Pause within each repetition.")
+        st.number_input("Rest between sets (s)", 0.0, 3600.0, key="rest", step=15.0)
     with st.expander("Energy recovery", expanded=True):
         st.slider("Mechanical capture (%)", 0, 100, key="capture",
                   help="Share of descending gravitational energy diverted to the harvesting mechanism. Higher capture changes the lowering resistance.")
         st.slider("Combined conversion efficiency (%)", 0, 100, key="efficiency",
                   help="Transmission × generator × electronics × storage/inverter efficiencies, where applicable. Do not apply those losses again.")
-        st.slider("Electricity used locally (%)", 0, 100, key="usable",
-                  help="Accounts for discarded energy or full storage. Unused generation earns no export income.")
+        st.caption("All generated electricity is counted as locally used. Storage limits and export income are outside this model.")
     with st.expander("Gym & operating schedule"):
         st.number_input("Number of machines", 1, 500, key="machines")
         st.number_input("Operating days per year", 0, 365, key="days")
@@ -85,25 +85,27 @@ with st.sidebar:
         st.checkbox("Powered 24/7, including closed days", key="always_on")
         st.caption("Otherwise powered only during gym opening hours. Active power replaces standby power while exercising.")
     with st.expander("Costs & lifetime"):
-        st.selectbox("Currency label", ["USD", "KGS", "EUR", "GBP"], key="currency",
+        st.selectbox("Currency label", ["USD", "KGS", "EUR", "GBP", "INR"], key="currency",
                      help="Labels only; no exchange-rate conversion. Enter every price in the selected currency.")
-        st.number_input("Electricity price / kWh", 0.0, 1000.0, key="tariff", step=0.01, format="%.3f")
-        st.number_input("Installed retrofit cost / machine", 0.0, 1000000.0, key="retrofit", step=10.0)
-        st.number_input("Shared installation cost", 0.0, 1000000.0, key="shared", step=10.0)
-        st.number_input("Annual upkeep / machine", 0.0, 100000.0, key="maintenance", step=1.0,
+        st.number_input(f"Electricity price ({st.session_state.currency}/kWh)", 0.0, 1000.0, key="tariff", step=0.01, format="%.3f")
+        st.number_input(f"Installed retrofit cost / machine ({st.session_state.currency})", 0.0, 1000000.0, key="retrofit", step=10.0)
+        st.number_input(f"Shared installation cost ({st.session_state.currency})", 0.0, 1000000.0, key="shared", step=10.0)
+        st.number_input(f"Annual upkeep / machine ({st.session_state.currency})", 0.0, 100000.0, key="maintenance", step=1.0,
                         help="Include maintenance and an annual allowance for component replacements.")
         st.slider("System lifetime (years)", 1, 30, key="life")
         st.number_input("Discount rate (%)", 0.0, 30.0, key="discount", step=0.5)
+        st.number_input("Annual inflation / price growth (%)", 0.0, 30.0, key="inflation", step=0.5,
+                        help="Electricity prices and annual upkeep rise by this rate. Discount rate is nominal and should use the same basis.")
 
 s = st.session_state
 p = Inputs(mass_kg=s.mass, travel_m=s.travel, reps_per_set=s.reps, sets_per_day=s.sets,
-           lifting_s=s.lift, lowering_s=s.lower, pause_s=s.pause, capture=s.capture / 100,
-           efficiency=s.efficiency / 100, usable_fraction=s.usable / 100,
+           lifting_s=s.lift, lowering_s=s.lower, pause_s=s.pause, rest_between_sets_s=s.rest,
+           capture=s.capture / 100, efficiency=s.efficiency / 100,
            machines=s.machines, days_per_year=s.days, availability=s.availability / 100,
            opening_hours=s.opening, active_aux_w=s.active_aux, standby_w=s.standby,
            always_on=s.always_on, tariff=s.tariff, retrofit_per_machine=s.retrofit,
            shared_cost=s.shared, maintenance_per_machine=s.maintenance,
-           lifetime_years=s.life, discount_rate=s.discount / 100)
+           lifetime_years=s.life, discount_rate=s.discount / 100, inflation_rate=s.inflation / 100)
 
 st.markdown("""<div class="hero"><div class="eyebrow">HUMAN POWER · MEASURABLE IMPACT</div>
 <h1>What could your workout power?</h1>
@@ -142,11 +144,12 @@ elif result.payback_years > p.lifetime_years:
 else:
     payback_label = f"{result.payback_years:.1f} years"
 
-cols = st.columns(4)
-cols[0].metric("Electricity per set", f"{result.gross_wh_per_session:.3f} Wh", help="Gross electricity from one machine before auxiliary consumption and unused output.")
-cols[1].metric("Annual net energy · fleet", f"{result.net_kwh_year:,.2f} kWh", help="Locally used generation minus controller and monitoring consumption.")
+cols = st.columns(5)
+cols[0].metric("Electricity per set", f"{result.gross_wh_per_session:.3f} Wh", help="Generated electricity after generator/conversion heat losses, before annual auxiliary consumption.")
+cols[1].metric("Annual net energy · fleet", f"{result.net_kwh_year:,.2f} kWh", help="Generated electricity minus controller and monitoring consumption.")
 cols[2].metric("Annual net savings · fleet", money(result.savings_year), help="Electricity value less annual upkeep. Installation costs are accounted for in payback.")
 cols[3].metric("Simple payback", payback_label, help="Installed cost divided by positive annual net savings. Ignores discounting.")
+cols[4].metric("Machine utilization", f"{result.active_hours_per_day / p.opening_hours:.1%}", help="Scheduled exercise and between-set rest divided by gym opening hours, per machine.")
 
 if result.net_kwh_year < 0:
     st.warning("This scenario consumes more electricity than it recovers. Reduce auxiliary draw or increase useful generation.")
@@ -157,6 +160,28 @@ elif result.payback_years > p.lifetime_years:
 else:
     st.success("Under these assumptions, electricity savings recover the installed cost within the selected lifetime. Check the discounted result in Costs & payback.")
 
+st.markdown("### Scenario range")
+scenario_tabs = st.tabs(["Conservative", "Expected", "Optimistic"])
+scenario_specs = [
+    ("Conservative", replace(p, capture=min(p.capture, 0.35), efficiency=min(p.efficiency, 0.45), availability=min(p.availability, 0.85)),
+     "Capture ≤35%: cautious mechanical coupling; efficiency ≤45%: conservative small-generator and electronics losses; availability ≤85%: downtime allowance."),
+    ("Expected", p, "Uses the current sidebar values unchanged. These are the team's selected working assumptions."),
+    ("Optimistic", replace(p, capture=max(p.capture, 0.65), efficiency=max(p.efficiency, 0.75), availability=max(p.availability, 0.95)),
+     "Capture ≥65%: well-tuned braking mechanism; efficiency ≥75%: favorable generator/electronics operation; availability ≥95%: reliable operation."),
+]
+for tab, (name, scenario_p, rationale) in zip(scenario_tabs, scenario_specs):
+    with tab:
+        st.caption(rationale)
+        try:
+            scenario_result = weight_stack(scenario_p)
+            sc = st.columns(3)
+            sc[0].metric("Net electricity / year", f"{scenario_result.net_kwh_year:,.2f} kWh")
+            sc[1].metric("Net savings / year", money(scenario_result.savings_year))
+            sc[2].metric("NPV", money(scenario_result.net_present_value))
+            st.caption(f"Capture {scenario_p.capture:.0%} · conversion efficiency {scenario_p.efficiency:.0%} · availability {scenario_p.availability:.0%}. All other inputs stay at sidebar values.")
+        except ValueError as exc:
+            st.warning(f"{name} schedule: {exc}")
+
 overview, economics, comparison, science = st.tabs(["Energy overview", "Costs & payback", "Compare equipment", "Physics & assumptions"])
 
 with overview:
@@ -165,24 +190,24 @@ with overview:
     <div><b>Weight descends</b><span>{p.mass_kg:g} kg × {p.travel_m:g} m vertical travel</span></div>
     <div><b>Mechanical capture</b><span>{p.capture:.0%} of gravitational energy</span></div>
     <div><b>Electrical conversion</b><span>{p.efficiency:.0%} combined efficiency</span></div>
-    <div><b>Useful electricity</b><span>{p.usable_fraction:.0%} used locally, then subtract auxiliaries</span></div>
+    <div><b>Net electricity</b><span>Generated output less controller consumption</span></div>
     </div>""", unsafe_allow_html=True)
     left, right = st.columns([1.65, 1], gap="large")
     with left:
         st.markdown("#### Annual energy balance")
-        losses = result.source_kwh_year - result.gross_kwh_year
-        unused = result.gross_kwh_year - result.usable_kwh_year
+        uncaptured = result.mechanical_loss_wh_per_session * p.sets_per_day * p.days_per_year * p.availability * p.machines / 1000
+        heat = result.generator_heat_loss_wh_per_session * p.sets_per_day * p.days_per_year * p.availability * p.machines / 1000
         fig = go.Figure(go.Waterfall(
-            x=["Available<br>on descent", "Uncaptured &<br>conversion losses", "Unused<br>electricity", "Auxiliary<br>consumption", "Net<br>electricity"],
+            x=["Available<br>on descent", "Energy not<br>captured", "Generator<br>heat loss", "Auxiliary<br>consumption", "Net<br>electricity"],
             measure=["absolute", "relative", "relative", "relative", "total"],
-            y=[result.source_kwh_year, -losses, -unused, -result.auxiliary_kwh_year, 0],
+            y=[result.source_kwh_year, -uncaptured, -heat, -result.auxiliary_kwh_year, 0],
             connector=dict(line=dict(color="#acbec9")),
             decreasing=dict(marker=dict(color="#d5a267")),
             increasing=dict(marker=dict(color="#8babc0")),
             totals=dict(marker=dict(color="#087f70")),
             hovertemplate="%{x}: %{y:.3f} kWh<extra></extra>"))
         st.plotly_chart(style_chart(fig, ytitle="kWh / year · entire fleet"), width="stretch")
-        st.caption("Uncaptured energy includes energy still absorbed by the user and machine; it is not all an electrical conversion loss.")
+        st.caption(f"Per set: {result.source_wh_per_session:.3f} Wh available → {result.mechanical_loss_wh_per_session:.3f} Wh not captured → {result.generator_heat_loss_wh_per_session:.3f} Wh lost as generator/conversion heat → {result.gross_wh_per_session:.3f} Wh electricity.")
     with right:
         st.markdown("#### Put it in perspective")
         st.number_input("Example device power (W)", 0.1, 5000.0, key="device_w", step=1.0)
@@ -190,10 +215,12 @@ with overview:
         st.metric("Equivalent runtime from a year's net energy", f"{runtime:,.1f} hours")
         st.caption("An energy equivalence, not a guarantee of continuous operation. Storage and output-power limits are not simulated.")
         st.markdown(f"**{result.generating_power_w:.1f} W** average electrical power during one descent.")
-        st.markdown(f"**{result.active_hours_per_day:.2f} h/day** of exercise per machine before availability adjustment.")
+        st.markdown(f"**{result.active_hours_per_day:.2f} h/day** scheduled per machine, including {p.rest_between_sets_s:g}s rest after each set.")
         st.caption("Daily usage is based on sets; changing movement speed changes power and active electronics consumption, not ideal energy per repetition.")
     st.markdown("### How much does usage matter?")
-    maximum_sets = int(p.opening_hours * 3600 / (p.reps_per_set * (p.lifting_s + p.lowering_s + p.pause_s)))
+    per_set_seconds = p.reps_per_set * (p.lifting_s + p.lowering_s + p.pause_s)
+    maximum_sets = int((p.opening_hours * 3600 + p.rest_between_sets_s) /
+                       (per_set_seconds + p.rest_between_sets_s))
     upper = min(max(100, p.sets_per_day * 2), maximum_sets)
     counts = sorted(set([0, p.sets_per_day, upper] + [round(upper * i / 30) for i in range(31)]))
     net_values = [weight_stack(replace(p, sets_per_day=n)).net_kwh_year for n in counts]
@@ -218,6 +245,10 @@ with economics:
     fig.add_hline(y=0, line_dash="dot", line_color="#9caeba")
     fig.update_layout(xaxis_title="Years since installation", xaxis=dict(dtick=max(1, p.lifetime_years // 10)))
     st.plotly_chart(style_chart(fig, ytitle=f"Cumulative cash balance ({s.currency})"), width="stretch")
+    if result.break_even_tariff is None:
+        st.metric("Break-even electricity price", "Not achievable", help="Annual generation does not exceed auxiliary electricity use.")
+    else:
+        st.metric("Break-even electricity price", f"{s.currency} {result.break_even_tariff:.3f} / kWh", help="Tariff needed for electricity savings to cover annual upkeep, before recovering installation cost.")
     a, b = st.columns(2, gap="large")
     with a:
         st.markdown("#### Annual balance")
@@ -230,9 +261,9 @@ with economics:
         st.markdown("#### Your retrofit budget target")
         if result.savings_year > 0:
             st.metric("Maximum total installed cost to break even", money(result.break_even_budget))
-            st.caption(f"Present value of {p.lifetime_years} years of net savings at a {p.discount_rate:.1%} discount rate, including the current upkeep assumption.")
         else:
             st.warning("No nonnegative installation budget breaks even while annual net savings are negative or zero (except a zero-cost, zero-savings case).")
+        st.caption(f"Present value of {p.lifetime_years} years of net savings at a {p.discount_rate:.1%} discount rate. Electricity prices and upkeep grow at {p.inflation_rate:.1%} annually.")
         st.caption("Constant annual use and prices; no grants, export revenue, taxes, resale value, or separate major replacement schedule. Membership or educational benefits are not counted as electricity income.")
 
 with comparison:
@@ -244,7 +275,7 @@ with comparison:
     b.number_input("Minutes per cycling session", 1, 240, key="bike_minutes", step=5)
     c.number_input("Sessions per bike per day", 0, 100, key="bike_sessions")
     d.slider("Bike conversion efficiency (%)", 0, 100, key="bike_efficiency")
-    st.caption("Both options use the sidebar's machine count, operating days, availability, usable fraction, auxiliary draw and cost assumptions. Equal retrofit costs are a comparison assumption, not a supplier quote.")
+    st.caption("Both options use the sidebar's machine count, operating days, availability, auxiliary draw and cost assumptions. Equal retrofit costs are a comparison assumption, not a supplier quote.")
     try:
         bike = cycling(p, s.bike_power, s.bike_minutes, s.bike_sessions, s.bike_efficiency / 100)
         fig = go.Figure()
@@ -269,7 +300,7 @@ with science:
     st.markdown("### A transparent first model")
     st.write("The stack starts and ends each descent at rest. We recover only a selected fraction of its released gravitational potential energy.")
     st.latex(r"E_{\mathrm{set,Wh}}=\frac{mgh\,n\,\alpha\,\eta}{3600}")
-    st.write("m = moving mass (kg); g = 9.81 m/s²; h = vertical stack travel (m); n = repetitions; α = capture fraction; η = combined conversion efficiency.")
+    st.write("m = moving mass (kg); g = 9.81 m/s²; h = vertical stack travel (m); n = repetitions; α = capture fraction; η = combined conversion efficiency. The uncaptured portion is the energy not diverted to the generator; captured mechanical energy not converted electrically is reported as generator/conversion heat.")
     st.latex(r"E_{\mathrm{net,year}}=u E_{\mathrm{gross,year}}-E_{\mathrm{aux,year}}")
     st.latex(r"E_{\mathrm{aux,kWh}}=\frac{M[P_{\mathrm{active}}H_{\mathrm{active}}+P_{\mathrm{standby}}(H_{\mathrm{powered}}-H_{\mathrm{active}})]}{1000}")
     st.write("M = machine count. Annual active hours include availability. Powered hours are opening hours × operating days, or 8,760 for always-on electronics. Auxiliary energy is subtracted once, after conversion and local-use losses.")
@@ -279,9 +310,9 @@ with science:
 - **Generation changes the workout.** A descending generator provides braking and reduces the user's eccentric loading. A 100% capture setting is a theoretical boundary, not a recommended exercise design.
 - **No double-counting.** Lifting energy is not harvested in this version; pulley ratios do not multiply energy.
 - **Constant efficiency.** Low-speed cut-in, torque limits, acceleration, friction curves and generator saturation are not resolved. Capture and efficiency are assumed effective averages.
-- **Identical representative machines.** Usage is averaged; availability scales activity and output. Between-set rest and queues are not explicitly scheduled.
+- **Identical representative machines.** Usage is averaged; availability scales activity and output. Between-set rest is included in daily opening-hours checks; queues are not modelled.
 - **A common electrical boundary.** Include any storage/inverter losses in combined efficiency. Auxiliary draw is total added electrical consumption at that boundary.
-- **Local use only.** Net energy offsets purchases at a flat tariff; negative net energy increases purchases. Unused electricity has zero export value.
+- **Local use only.** All generation is treated as locally used and offsets purchases at a flat tariff; negative net energy increases purchases. Storage limits and export revenue are outside this model.
 - **Concept study.** The simulator does not validate a mechanical attachment, electrical installation, or preservation of exercise biomechanics.
 - **Environmental claims are not yet calculated.** Materials, food-related effects, manufacturing and end-of-life impacts need separate evidence. No AI service or live telemetry is required by the simulator.
 """)
@@ -296,6 +327,14 @@ with science:
 
 **Commercial context:** [SportsArt ECO-POWR](https://www.gosportsart.com/eco-powr/) demonstrates generating cardio equipment. Manufacturer figures are not used as measured performance for this retrofit.
 """)
+    video_path = "media/stack_energy.mp4"
+    try:
+        with open(video_path, "rb") as video_file:
+            st.markdown("#### Energy recovery animation")
+            st.video(video_file.read())
+            st.caption("Animation uses the default inputs and per-set energy balance from model.py.")
+    except FileNotFoundError:
+        st.info("The physics animation will appear here when `media/stack_energy.mp4` is added. A Manim scene generator is included in the repository.")
     st.info("Every editable starting value is an illustrative assumption. No field currently represents a verified measurement from your gym.")
 
 st.divider()

@@ -20,7 +20,8 @@ Open the Local URL printed by Streamlit, normally http://localhost:8501.
 
 ## Features
 
-- Editable exercise, recovery, utilization, auxiliary-power and cost assumptions.
+- Editable exercise, recovery, rest-time, utilization, auxiliary-power and cost assumptions.
+- Conservative, expected and optimistic cases that vary uncertain recovery inputs.
 - Energy balance, usage sensitivity, device-runtime equivalence and cash-flow charts.
 - Negative net energy and uneconomic cases remain visible.
 - Exercise-bike comparison with explicit shared cost and operating assumptions.
@@ -40,11 +41,31 @@ Efficiency includes any transmission, conversion, storage and inverter losses.
 Active electronics power replaces standby power during exercise; powered hours
 cover gym opening hours or all 8,760 hours/year. Negative net output is permitted.
 
-Electricity value is net kWh times a user-entered flat tariff. Annual savings
-subtract maintenance and an annual replacement allowance. Simple payback assumes
-constant annual savings; NPV discounts savings over equipment lifetime. Major
-replacement schedules, grants, export income and resale value are not modelled.
-Currency selection only relabels values; it never converts prices.
+Electricity value is net kWh times a user-entered tariff. Annual savings subtract
+maintenance. Electricity prices and maintenance grow at the selected annual
+inflation rate; NPV discounts these nominal cash flows at the selected nominal
+discount rate. Simple payback uses the first-year savings. Major replacement
+schedules, grants, export income and resale value are not modelled. Currency
+selection only labels values; it never converts prices. USD, KGS, EUR, GBP and
+INR are available.
+
+The annual energy waterfall separates energy not captured mechanically from
+captured energy lost as heat during generator/electrical conversion. The model
+counts all generated electricity as used locally and subtracts auxiliary power;
+storage constraints and export are outside the current boundary.
+
+## Optional Manim animation
+
+The app embeds `media/stack_energy.mp4` in the Physics tab when present. The
+scene generator reads the model defaults and calculation directly:
+
+```bash
+python -m pip install manim
+manim -pqh gym_energy_animation.py StackEnergy
+```
+
+Copy the rendered `StackEnergy.mp4` to `media/stack_energy.mp4` to include it in
+the deployment. Manim is optional and is not installed by the Streamlit app.
 
 Cycling uses mechanical pedal power times duration times its own efficiency.
 The stack capture fraction does not apply to cycling. The two fleets share the
