@@ -39,14 +39,14 @@ class PhysicsTests(unittest.TestCase):
         self.assertEqual(r.gross_kwh_year, 0)
         self.assertAlmostEqual(r.auxiliary_kwh_year, 3.6)
 
-    def test_no_usable_output(self):
-        r = weight_stack(replace(Inputs(), usable_fraction=0))
-        self.assertAlmostEqual(r.net_kwh_year, -r.auxiliary_kwh_year)
+    def test_generated_output_is_used_before_auxiliary_consumption(self):
+        r = weight_stack(Inputs())
+        self.assertAlmostEqual(r.net_kwh_year, r.gross_kwh_year - r.auxiliary_kwh_year)
 
     def test_costs_and_discounting(self):
         p = replace(Inputs(), retrofit_per_machine=1, shared_cost=2,
                     maintenance_per_machine=0, active_aux_w=0, standby_w=0,
-                    machines=2, lifetime_years=10, discount_rate=0)
+                    machines=2, lifetime_years=10, discount_rate=0, inflation_rate=0)
         r = weight_stack(p)
         self.assertEqual(r.installed_cost, 4)
         self.assertAlmostEqual(r.payback_years, 4 / (0.35316 * 2))
@@ -75,3 +75,31 @@ class PhysicsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class RevisionTests(unittest.TestCase):
+    def test_energy_partition(self):
+        r = weight_stack(Inputs())
+        self.assertAlmostEqual(r.source_wh_per_session, r.mechanical_loss_wh_per_session + r.generator_heat_loss_wh_per_session + r.gross_wh_per_session)
+
+    def test_rest_schedule_and_auxiliary(self):
+        p = Inputs()
+        a, b = weight_stack(p), weight_stack(replace(p, rest_between_sets_s=0))
+        self.assertAlmostEqual(a.scheduled_hours_per_day - b.scheduled_hours_per_day, 49 / 60)
+        self.assertEqual(a.auxiliary_kwh_year, b.auxiliary_kwh_year)
+        with self.assertRaises(ValueError):
+            weight_stack(replace(p, opening_hours=1))
+
+    def test_lifetime_break_even(self):
+        p = Inputs()
+        r = weight_stack(p)
+        self.assertAlmostEqual(weight_stack(replace(p, tariff=r.break_even_tariff)).net_present_value, 0, places=8)
+        self.assertIsNone(weight_stack(replace(p, capture=0)).break_even_tariff)
+
+    def test_first_year_and_growth(self):
+        from model import cumulative_balance
+        p = replace(Inputs(), lifetime_years=2)
+        r = weight_stack(p)
+        rows = cumulative_balance(p, r)
+        self.assertAlmostEqual(rows[1]['Cash balance'], -r.installed_cost + r.savings_year)
+        self.assertAlmostEqual(rows[-1]['Cash balance'], r.lifetime_balance)
+        self.assertAlmostEqual(r.net_present_value, -r.installed_cost + r.savings_year / 1.05 + r.savings_year * 1.02 / 1.05**2)
